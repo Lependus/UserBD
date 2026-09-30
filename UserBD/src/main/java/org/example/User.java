@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "users")
+@Table (name = "users")
 public class User {
 
     @Id
@@ -27,14 +27,8 @@ public class User {
     public User() {
     }
 
-    public User(String name, String email, int age, String created_at) {
-        this.name = name;
-        this.email = email;
-        this.age = age;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
+    public User(String name, String email, int age) {
+        update(name, email, age);
     }
 
     public void setName(String name) {
@@ -49,39 +43,59 @@ public class User {
         this.age = age;
     }
 
-    public User(String name, String email, int age) {
-        update(name, email, age);
-    }
-
-    public void update(String name, String email, int age) {
-        if (name == null || name.isBlank() || name.strip().length() > 100) {
-            throw new IllegalArgumentException("Имя должно содержать 1–100 символов.");
-        }
-        if (email == null || email.length() > 254
-                || !email.contains("@")) {
-            throw new IllegalArgumentException("Некорректный email.");
-        }
-        if (age < 0 || age > 150) {
-            throw new IllegalArgumentException("Возраст должен быть от 0 до 150.");
-        }
-
-        this.name = name.strip();
-        this.email = email;
-        this.age = age;
-    }
-
-    @PrePersist
-    private void onCreate() {
-        createdAt = Instant.now();
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
     }
 
     public Long getId() {
         return id;
     }
 
+    public String getName() {
+        return name;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public int getAge() {
+        return age;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void update(String name, String email, int age){
+        if (name == null || name.isBlank() || name.length() > 100){
+            throw new IllegalArgumentException("Имя не должно быть пустым и должно содержать 1-100 символов.");
+        }
+        if (email == null || email.length() > 254 || !email.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")){
+            throw new IllegalArgumentException("Некорректный email");
+        }
+        if (age < 0 || age > 150){
+            throw new IllegalArgumentException("Возраст должен быть от 0 до 150.");
+        }
+
+        this.name = name;
+        this.email = email;
+        this.age = age;
+    }
+
+    @PrePersist
+    public void onCreated(){
+        createdAt = Instant.now();
+    }
+
     @Override
     public String toString() {
-        return "id=%s, name=%s, email=%s, age=%d, created_at=%s"
-                .formatted(id, name, email, age, createdAt);
+        return "User{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", email='" + email + '\'' +
+                ", age=" + age +
+                ", createdAt=" + createdAt +
+                '}';
     }
 }
