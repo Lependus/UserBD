@@ -7,10 +7,11 @@ import java.util.Scanner;
 
 public class Main {
     public static void main(String[] args) {
-        try (SessionFactory factory = HibernateSessionFactoryUtil.getSessionFactory();
+        try (SessionFactory factory = HibernateSessionFactoryUtil.getSessionFactory()   ;
              Scanner scanner = new Scanner(System.in)) {
 
-            UserService service = new UserService(factory);
+            UserDaoImpl userDao = new UserDaoImpl(factory);
+            UserService service = new UserService(userDao);
             runMenu(scanner, service);
 
         } catch (RuntimeException e) {

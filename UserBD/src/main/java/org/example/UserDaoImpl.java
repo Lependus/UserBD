@@ -17,7 +17,7 @@ public class UserDaoImpl implements UserDAO{
     }
 
     private <T> T execute (Function<Session, T> operation){
-        try(Session session = HibernateSessionFactoryUtil.getSessionFactory().openSession()){
+        try(Session session = factory.openSession()){
             Transaction tr = session.beginTransaction();
 
             try{

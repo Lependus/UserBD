@@ -1,16 +1,14 @@
 package org.example;
-import org.hibernate.SessionFactory;
 
 import java.util.List;
 import java.util.Optional;
 
 public class UserService {
 
-    private final SessionFactory factory;
-    private UserDaoImpl usersDao = new UserDaoImpl(HibernateSessionFactoryUtil.getSessionFactory());
+    private final UserDAO usersDao;
 
-    public UserService(SessionFactory factory) {
-        this.factory = factory;
+    public UserService(UserDAO userDAO) {
+        this.usersDao = userDAO;
     }
 
     public Optional<User> findUser(long id) {
