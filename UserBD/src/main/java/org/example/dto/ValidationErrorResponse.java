@@ -1,4 +1,6 @@
 package org.example.dto;
 
-public class ValidationErrorResponse {
+import java.util.Map;
+
+public record ValidationErrorResponse (String message, Map<String, String> errors){
 }

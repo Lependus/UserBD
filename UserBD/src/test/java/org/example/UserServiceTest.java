@@ -17,7 +17,7 @@ import static org.mockito.Mockito.*;
 class UserServiceTest {
 
     @Mock
-    private UserDaoImpl userDao;
+    private UserRepository userRepository;
 
     @InjectMocks
     private UserService userService;
@@ -29,24 +29,24 @@ class UserServiceTest {
                 "alex@gmail.com",
                 18);
 
-        when(userDao.findById(1L))
+        when(userRepository.findById(1L))
                 .thenReturn(Optional.of(user));
 
         Optional<User> result = userService.findUser(1L);
 
         assertEquals(Optional.of(user), result);
-        verify(userDao).findById(1L);
+        verify(userRepository).findById(1L);
     }
 
     @Test
     void shouldReturnEmptyWhenUserNotFound(){
-        when(userDao.findById(1L))
+        when(userRepository.findById(1L))
                 .thenReturn(Optional.empty());
 
         Optional<User> result = userService.findUser(1L);
 
         assertEquals(Optional.empty(), result);
-        verify(userDao).findById(1L);
+        verify(userRepository).findById(1L);
     }
 
     @Test
@@ -57,49 +57,57 @@ class UserServiceTest {
                         "alex@gmail.com",
                         18);
 
-        userService.saveUser(savedUser);
+        when(userRepository.save(savedUser)).thenReturn(savedUser);
+        User result = userService.saveUser(savedUser);
 
-        verify(userDao)
+        assertSame(savedUser, result);
+        verify(userRepository)
                 .save(savedUser);
     }
 
     @Test
     void shouldDeleteUser(){
-        Long userID = 1L;
+        User user =
+                new User(
+                        "Alex",
+                        "alex@gmail.com",
+                        18);
 
-        when(userDao.delete(userID)).thenReturn(true);
-        boolean isDeleted = userService.deleteUser(userID);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        boolean result = userService.deleteUser(1L);
 
-        assertTrue(isDeleted);
-        verify(userDao)
-                .delete(userID);
+        assertTrue(result);
+        verify(userRepository).findById(1L);
+        verify(userRepository).delete(user);
     }
 
     @Test
     void shouldReturnFalseWhenDeletionFails(){
-        Long userID = 1L;
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
+        boolean result = userService.deleteUser(1L);
 
-        when(userDao.delete(userID)).thenReturn(false);
-        boolean isDeleted = userService.deleteUser(userID);
-
-        assertFalse(isDeleted);
-        verify(userDao)
-                .delete(userID);
+        assertFalse(result);
+        verify(userRepository).findById(1L);
+        verify(userRepository, never()).delete(any(User.class));
     }
 
     @Test
     void shouldUpdateUser(){
-        Long userID = 1L;
-        String name = "Alex";
-        String mail = "alex@gmail.com";
-        int age = 18;
+        User user =
+                new User(
+                        "Alex",
+                        "alex@gmail.com",
+                        18);
 
-        when(userDao.update(userID, name, mail, age)).thenReturn(true);
-        boolean isUpdated = userService.updateUser(userID, name, mail, age);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        boolean result = userService.updateUser(
+                1L, "Sasha", "sasha@gmail.com", 23);
 
-        assertTrue(isUpdated);
-        verify(userDao)
-                .update(userID, name, mail, age);
+        assertTrue(result);
+        verify(userRepository).findById(1L);
+        assertEquals("Sasha", user.getName());
+        assertEquals("sasha@gmail.com", user.getEmail());
+        assertEquals(23, user.getAge());
     }
 
     @Test
@@ -109,12 +117,11 @@ class UserServiceTest {
         String mail = "alex@gmail.com";
         int age = 18;
 
-        when(userDao.update(userID, name, mail, age)).thenReturn(false);
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
         boolean isUpdated = userService.updateUser(userID, name, mail, age);
 
         assertFalse(isUpdated);
-        verify(userDao)
-                .update(userID, name, mail, age);
+        verify(userRepository).findById(1L);
     }
 
     @Test
@@ -129,20 +136,20 @@ class UserServiceTest {
                 "sasha@gmail.com",
                 23));
 
-        when(userDao.findAll()).thenReturn(users);
+        when(userRepository.findAll()).thenReturn(users);
 
         assertEquals(users, userService.findAllUsers());
-        verify(userDao)
+        verify(userRepository)
                 .findAll();
     }
 
     @Test
     void shouldReturnEmptyWhenUsersEmpty(){
 
-        when(userDao.findAll()).thenReturn(List.of());
+        when(userRepository.findAll()).thenReturn(List.of());
 
         assertEquals(List.of(), userService.findAllUsers());
-        verify(userDao)
+        verify(userRepository)
                 .findAll();
     }
 }

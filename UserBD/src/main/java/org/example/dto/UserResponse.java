@@ -1,4 +1,12 @@
 package org.example.dto;
 
-public class UserResponse {
+import java.time.Instant;
+
+public record UserResponse (
+        Long id,
+        String name,
+        String email,
+        int age,
+        Instant createdAt
+){
 }

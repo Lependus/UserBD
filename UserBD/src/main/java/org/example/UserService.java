@@ -1,34 +1,55 @@
 package org.example;
 
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.Service;
+
 import java.util.List;
 import java.util.Optional;
 
+@Service
+@Transactional
 public class UserService {
 
-    private final UserDAO usersDao;
+    private final UserRepository usersRepository;
 
-    public UserService(UserDAO userDAO) {
-        this.usersDao = userDAO;
+    public UserService(UserRepository usersRepository) {
+        this.usersRepository = usersRepository;
     }
 
+    @Transactional(readOnly = true)
     public Optional<User> findUser(long id) {
-        return usersDao.findById(id);
+        return usersRepository.findById(id);
     }
 
-    public void saveUser(User user) {
-        usersDao.save(user);
+    public User saveUser(User user) {
+        return usersRepository.save(user);
     }
 
     public boolean deleteUser(long id) {
-        return  usersDao.delete(id);
+        User user = usersRepository.findById(id).orElse(null);
+        if (user == null){
+            return false;
+        }
+        else {
+            usersRepository.delete(user);
+            return true;
+        }
     }
 
     public boolean updateUser(long id, String name, String email, int age) {
-        return usersDao.update(id, name, email, age);
+        User user = usersRepository.findById(id).orElse(null);
+        if(user == null){
+            return false;
+        }
+        else {
+            user.update(name, email, age);
+            return true;
+        }
     }
 
+    @Transactional(readOnly = true)
     public List<User> findAllUsers() {
-        return usersDao.findAll();
+        return usersRepository.findAll();
     }
 
 }

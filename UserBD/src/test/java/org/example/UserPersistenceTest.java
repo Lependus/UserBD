@@ -1,17 +1,17 @@
 package org.example;
 
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
-import org.hibernate.cfg.Configuration;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -21,314 +21,149 @@ import static org.junit.jupiter.api.Assertions.*;
 
 
 @Testcontainers
-public class UserDaoImplTest {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+public class UserPersistenceTest {
 
     @Container
-    static PostgreSQLContainer postgres =
-            new PostgreSQLContainer("postgres:16")
+    static PostgreSQLContainer<?> postgres =
+            new PostgreSQLContainer<>("postgres:16")
                     .withDatabaseName("test_db")
                     .withUsername("test")
                     .withPassword("test");
 
-    private static SessionFactory factory;
-    private static UserDaoImpl userDao;
+    @Autowired
+    private UserService userService;
 
-    @BeforeAll
-    static void setUp() {
-        Configuration configuration = new Configuration();
+    @Autowired
+    private UserRepository userRepository;
 
-        configuration.addAnnotatedClass(User.class);
-
-        configuration.setProperty(
-                "hibernate.connection.url", postgres.getJdbcUrl());
-        configuration.setProperty(
-                "hibernate.connection.username", postgres.getUsername());
-        configuration.setProperty(
-                "hibernate.connection.password", postgres.getPassword());
-        configuration.setProperty(
-                "hibernate.connection.driver_class", "org.postgresql.Driver");
-
-        configuration.setProperty(
-                "hibernate.hbm2ddl.auto", "create-drop");
-
-        factory = configuration.buildSessionFactory();
-        userDao = new UserDaoImpl(factory);
+    @DynamicPropertySource
+    static void configureDatabase(DynamicPropertyRegistry registry){
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
     }
 
     @BeforeEach
     void clearDatabase() {
-        try (Session session = factory.openSession()) {
-            Transaction transaction = session.beginTransaction();
-
-            try {
-                session.createMutationQuery("delete from User")
-                        .executeUpdate();
-                transaction.commit();
-            } catch (RuntimeException e) {
-                if (transaction.isActive()) {
-                    transaction.rollback();
-                }
-                throw e;
-            }
-        }
-    }
-
-    @AfterAll
-    static void tearDown() {
-        if (factory != null) {
-            factory.close();
-        }
+        userRepository.deleteAll();
     }
 
     @Test
     void shouldSaveUser(){
-        User user = new User("Alex",
-                "alex@gmail.com",
-                18);
+        User user =
+                new User(
+                        "Alex",
+                        "alex@gmail.com",
+                        18);
 
-        userDao.save(user);
-
-        assertNotNull(user.getId());
-
-        try (Session session = factory.openSession()){
-            User savedUser = session.find(User.class, user.getId());
-
-            assertNotNull(savedUser);
-            assertEquals(user.getName(), savedUser.getName());
-            assertEquals(user.getEmail(), savedUser.getEmail());
-            assertEquals(user.getAge(), savedUser.getAge());
-            assertNotNull(savedUser.getCreatedAt());
-
-        }
-    }
-
-    @Test
-    void shouldReturnUserById(){
-        User user = new User("Alex",
-                "alex@gmail.com",
-                18);
-        try (Session session = factory.openSession()){
-            Transaction transaction = session.beginTransaction();
-            session.persist(user);
-            transaction.commit();
-        }
-        Long userID = user.getId();
-
-        Optional<User> result = userDao.findById(userID);
+        User savedUser = userService.saveUser(user);
+        assertNotNull(savedUser);
+        assertNotNull(savedUser.getId());
+        assertNotNull(savedUser.getCreatedAt());
+        Optional<User> result = userService.findUser(savedUser.getId());
 
         assertTrue(result.isPresent());
 
-        User foundUser = result.orElseThrow();
+        User createdUser = result.orElseThrow();
 
-        assertEquals(user.getId(), foundUser.getId());
-        assertEquals(user.getName(), foundUser.getName());
-        assertEquals(user.getEmail(), foundUser.getEmail());
-        assertEquals(user.getAge(), foundUser.getAge());
+        assertNotNull(createdUser.getCreatedAt());
+        assertEquals(savedUser.getId(), createdUser.getId());
+        assertEquals(savedUser.getName(), createdUser.getName());
+        assertEquals(savedUser.getEmail(), createdUser.getEmail());
+        assertEquals(savedUser.getAge(), createdUser.getAge());
     }
 
     @Test
-    void shouldReturnEmptyWhenUserNotFound(){
-
-        Optional<User> result = userDao.findById(1L);
-
-        assertTrue(result.isEmpty());
-    }
-
-    @Test
-    void shouldUpdateUser(){
-        Long userID;
-
-        try (Session session = factory.openSession()){
-            Transaction transaction = session.beginTransaction();
-
-            User user = new User("Alex",
-                    "alex@gmail.com",
-                    18);
-
-            session.persist(user);
-            transaction.commit();
-
-            userID = user.getId();
-        }
-
-        boolean updated = userDao.update(
-                userID,
+    void shouldReturnUsersList(){
+        User user1 = new User(
+                "Alex",
+                "alex@gmail.com",
+                23);
+        User user2 = new User(
                 "Sasha",
                 "sasha@gmail.com",
-                23);
+                14);
+
+        User savedUser1 = userService.saveUser(user1);
+        User savedUser2 = userService.saveUser(user2);
+
+        List<User> users = userService.findAllUsers();
+        assertEquals(2, users.size());
+
+        Set<Long> actualIds = users.stream()
+                .map(User::getId)
+                .collect(Collectors.toSet());
+
+        assertEquals(
+                Set.of(savedUser1.getId(), savedUser2.getId()),
+                actualIds
+        );
+    }
+
+    @Test
+    void shouldUpdateUser() {
+        User savedUser = userService.saveUser(
+                new User("Alex", "alex@gmail.com", 18)
+        );
+
+        User beforeUpdate = userService.findUser(savedUser.getId())
+                .orElseThrow();
+
+        Long originalId = beforeUpdate.getId();
+        Instant originalCreatedAt = beforeUpdate.getCreatedAt();
+        assertNotNull(originalCreatedAt);
+
+        boolean updated = userService.updateUser(
+                originalId, "Sasha", "sasha@gmail.com", 23
+        );
 
         assertTrue(updated);
 
-        try (Session session = factory.openSession()) {
-            User newUser = session.find(User.class, userID);
+        User afterUpdate = userService.findUser(originalId)
+                .orElseThrow();
 
-            assertNotNull(newUser);
-            assertEquals("Sasha", newUser.getName());
-            assertEquals("sasha@gmail.com", newUser.getEmail());
-            assertEquals(23, newUser.getAge());
-        }
+        assertEquals("Sasha", afterUpdate.getName());
+        assertEquals("sasha@gmail.com", afterUpdate.getEmail());
+        assertEquals(23, afterUpdate.getAge());
+        assertEquals(originalId, afterUpdate.getId());
+        assertEquals(originalCreatedAt, afterUpdate.getCreatedAt());
     }
 
     @Test
-    void shouldFailUpdateWhenUserNotFound(){
+    void shouldDeleteUser() {
+        User savedUser = userService.saveUser(
+                new User("Alex", "alex@gmail.com", 18)
+        );
 
-        boolean updated = userDao.update(
-                1L,
-                "Alex",
-                "alex@gmail.com",
-                18);
+        Long id = savedUser.getId();
 
-        assertFalse(updated);
-    }
-
-    @Test
-    void shouldDeleteUser(){
-        Long userID;
-
-        try (Session session = factory.openSession()){
-            Transaction transaction = session.beginTransaction();
-
-            User user = new User("Alex",
-                    "alex@gmail.com",
-                    18);
-
-            session.persist(user);
-            transaction.commit();
-
-            userID = user.getId();
-        }
-
-        boolean deleted = userDao.delete(userID);
+        boolean deleted = userService.deleteUser(id);
 
         assertTrue(deleted);
-
-        try (Session session = factory.openSession()) {
-            User newUser = session.find(User.class, userID);
-
-            assertNull(newUser);
-        }
+        assertTrue(userService.findUser(id).isEmpty());
     }
 
     @Test
-    void shouldFailDeleteWhenUserNotFound(){
+    void shouldRejectDuplicateEmail() {
+        User savedUser = userService.saveUser(
+                new User("Alex", "alex@gmail.com", 18)
+        );
 
-        boolean deleted = userDao.delete(1L);
+        User secondUser = new User("Sasha", "alex@gmail.com", 23);
 
-        assertFalse(deleted);
-    }
+        assertThrows(
+                DataIntegrityViolationException.class,
+                () -> userService.saveUser(secondUser)
+        );
 
-    @Test
-    void shouldFindAllUsers() {
-        Long firstUserID;
-        Long secondUserID;
+        List<User> users = userService.findAllUsers();
 
-        try (Session session = factory.openSession()) {
-            Transaction transaction = session.beginTransaction();
-
-            User user1 = new User("Alex",
-                    "alex@gmail.com",
-                    18);
-            User user2 = new User("Sasha",
-                    "sasha@gmail.com",
-                    23);
-
-            session.persist(user1);
-            session.persist(user2);
-            transaction.commit();
-
-            firstUserID = user1.getId();
-            secondUserID = user2.getId();
-        }
-
-        List<User> users = userDao.findAll();
-        assertNotNull(users);
-
-        Set<Long> actualIds = users.stream().map(User::getId).collect(Collectors.toSet());
-
-        assertEquals(2, users.size());
-        assertEquals(Set.of(firstUserID, secondUserID), actualIds);
-    }
-
-    @Test
-    void shouldReturnEmptyListWhenNoUsers(){
-
-        List<User> users = userDao.findAll();
-
-        assertNotNull(users);
-        assertTrue(users.isEmpty());
-    }
-
-    @Test
-    void shouldThrowExceptionWhenEmailIncorrect(){
-        Long userID;
-
-        try (Session session = factory.openSession()){
-            Transaction transaction = session.beginTransaction();
-
-            User user = new User("Alex",
-                    "alex@gmail.com",
-                    18);
-
-            session.persist(user);
-            transaction.commit();
-
-            userID = user.getId();
-        }
-
-
-
-        assertThrows(IllegalArgumentException.class, () -> {
-            userDao.update(
-                    userID,
-                    "Sasha",
-                    "sasha",
-                    23);
-        });
-
-        try (Session session = factory.openSession()) {
-            User newUser = session.find(User.class, userID);
-
-            assertNotNull(newUser);
-            assertEquals("Alex", newUser.getName());
-            assertEquals("alex@gmail.com", newUser.getEmail());
-            assertEquals(18, newUser.getAge());
-        }
-    }
-
-    @Test
-    void shouldThrowExceptionWhenEmailAlreadyExists(){
-        Long userID;
-
-        try (Session session = factory.openSession()){
-            Transaction transaction = session.beginTransaction();
-
-            User user = new User("Alex",
-                    "alex@gmail.com",
-                    18);
-
-            session.persist(user);
-            transaction.commit();
-
-            userID = user.getId();
-        }
-
-
-
-        assertThrows(org.hibernate.exception.ConstraintViolationException.class, () -> {
-            userDao.save(new User(
-                    "Sasha",
-                    "alex@gmail.com",
-                    23));
-        });
-
-        try (Session session = factory.openSession()) {
-            User newUser = session.find(User.class, userID);
-
-            assertNotNull(newUser);
-            assertEquals("Alex", newUser.getName());
-            assertEquals(1L, session.createQuery("select count(u) from User u", Long.class).getSingleResult());
-            assertEquals("alex@gmail.com", newUser.getEmail());
-            assertEquals(18, newUser.getAge());
-        }
+        assertEquals(1, users.size());
+        assertEquals(savedUser.getId(), users.get(0).getId());
+        assertEquals("Alex", users.get(0).getName());
+        assertEquals("alex@gmail.com", users.get(0).getEmail());
+        assertEquals(18, users.get(0).getAge());
     }
 }

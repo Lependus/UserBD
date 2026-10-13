@@ -1,4 +1,4 @@
 package org.example.dto;
 
-public class ErrorResponse {
+public record ErrorResponse (String message) {
 }
