@@ -1,5 +1,8 @@
 package org.example;
 
+import org.example.event.UserEvent;
+import org.example.event.UserOperation;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
@@ -11,9 +14,11 @@ import java.util.Optional;
 public class UserService {
 
     private final UserRepository usersRepository;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
-    public UserService(UserRepository usersRepository) {
+    public UserService(UserRepository usersRepository, ApplicationEventPublisher applicationEventPublisher) {
         this.usersRepository = usersRepository;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -22,7 +27,11 @@ public class UserService {
     }
 
     public User saveUser(User user) {
-        return usersRepository.save(user);
+        User result = usersRepository.save(user);
+
+        applicationEventPublisher.publishEvent(new UserEvent(UserOperation.CREATED, result.getEmail()));
+
+        return result;
     }
 
     public boolean deleteUser(long id) {
@@ -32,6 +41,7 @@ public class UserService {
         }
         else {
             usersRepository.delete(user);
+            applicationEventPublisher.publishEvent(new UserEvent(UserOperation.DELETED, user.getEmail()));
             return true;
         }
     }

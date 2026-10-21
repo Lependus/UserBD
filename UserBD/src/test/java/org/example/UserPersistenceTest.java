@@ -1,12 +1,19 @@
 package org.example;
 
+import org.example.event.UserEvent;
+import org.example.event.UserOperation;
+import org.example.kafka.UserEventProducer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -15,13 +22,17 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public class UserPersistenceTest {
 
     @Container
@@ -37,6 +48,12 @@ public class UserPersistenceTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private PlatformTransactionManager platformTransactionManager;
+
+    @MockitoBean
+    private UserEventProducer userEventProducer;
+
     @DynamicPropertySource
     static void configureDatabase(DynamicPropertyRegistry registry){
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -49,7 +66,11 @@ public class UserPersistenceTest {
     void clearDatabase() {
         userRepository.deleteAll();
     }
-
+    @BeforeEach
+    void publishEvent() {
+        when(userEventProducer.publish(any(UserEvent.class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
+    }
     @Test
     void shouldSaveUser(){
         User user =
@@ -165,5 +186,44 @@ public class UserPersistenceTest {
         assertEquals("Alex", users.get(0).getName());
         assertEquals("alex@gmail.com", users.get(0).getEmail());
         assertEquals(18, users.get(0).getAge());
+    }
+
+    @Test
+    void shouldPublishCreatedOnlyAfterCommit(){
+        TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+
+        transactionTemplate.executeWithoutResult(status -> {
+            userService.saveUser(
+                new User(
+                        "alex"
+        ,               "alex@gmail.com",
+                        18
+                ));
+            verifyNoInteractions(userEventProducer);
+        });
+
+        verify(userEventProducer).publish(
+                new UserEvent(UserOperation.CREATED, "alex@gmail.com"));
+
+    }
+
+    @Test
+    void shouldNotPublishCreatedAfterRollback(){
+        TransactionTemplate transactionTemplate = new TransactionTemplate(platformTransactionManager);
+
+        transactionTemplate.executeWithoutResult(status -> {
+            userService.saveUser(
+                    new User(
+                            "alex"
+                            ,               "rollback@example.com",
+                            18
+                    ));
+            verifyNoInteractions(userEventProducer);
+            status.setRollbackOnly();
+        });
+
+        verifyNoInteractions(userEventProducer);
+        assertEquals(0L, userRepository.count());
+
     }
 }

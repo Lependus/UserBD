@@ -1,10 +1,13 @@
 package org.example;
 
+import org.example.event.UserEvent;
+import org.example.event.UserOperation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +21,9 @@ class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @InjectMocks
     private UserService userService;
@@ -63,6 +69,8 @@ class UserServiceTest {
         assertSame(savedUser, result);
         verify(userRepository)
                 .save(savedUser);
+        verify(applicationEventPublisher)
+                .publishEvent(new UserEvent(UserOperation.CREATED, savedUser.getEmail()));
     }
 
     @Test
@@ -79,6 +87,8 @@ class UserServiceTest {
         assertTrue(result);
         verify(userRepository).findById(1L);
         verify(userRepository).delete(user);
+        verify(applicationEventPublisher)
+                .publishEvent(new UserEvent(UserOperation.DELETED, user.getEmail()));
     }
 
     @Test
@@ -89,6 +99,7 @@ class UserServiceTest {
         assertFalse(result);
         verify(userRepository).findById(1L);
         verify(userRepository, never()).delete(any(User.class));
+        verifyNoInteractions(applicationEventPublisher);
     }
 
     @Test
@@ -108,6 +119,7 @@ class UserServiceTest {
         assertEquals("Sasha", user.getName());
         assertEquals("sasha@gmail.com", user.getEmail());
         assertEquals(23, user.getAge());
+        verifyNoInteractions(applicationEventPublisher);
     }
 
     @Test
