@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.catalina.mapper.Mapper;
 import org.example.User;
 import org.example.UserService;
+import org.example.assembler.UserModelAssembler;
 import org.example.dto.UserRequest;
 import org.example.mapper.UserMapper;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(UserController.class)
-@Import(UserMapper.class)
+@Import({UserMapper.class, UserModelAssembler.class})
 public class UserControllerTest {
 
     @Autowired
@@ -45,16 +46,20 @@ public class UserControllerTest {
     @Test
     void shouldFindUser() throws Exception {
         User user = new User("AAAA", "aaaa@gmail.com", 20);
+        ReflectionTestUtils.setField(user, "id", 2L);
         user.setCreatedAt(Instant.parse("2026-10-09T02:00:00Z"));
 
         when(userService.findUser(2L)).thenReturn(Optional.of(user));
 
-        mockMvc.perform(get("/users/2"))
+        mockMvc.perform(get("/users/2").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(2L))
                 .andExpect(jsonPath("$.name").value("AAAA"))
                 .andExpect(jsonPath("$.email").value("aaaa@gmail.com"))
                 .andExpect(jsonPath("$.age").value(20))
-                .andExpect(jsonPath("$.createdAt").value("2026-10-09T02:00:00Z"));
+                .andExpect(jsonPath("$.createdAt").value("2026-10-09T02:00:00Z"))
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/users/2"))
+                .andExpect(jsonPath("$._links.users.href").value("http://localhost/users"));
 
         verify(userService).findUser(2L);
     }
@@ -80,22 +85,29 @@ public class UserControllerTest {
                 "Sasha",
                 "sasha@gmail.com",
                 23);
+        ReflectionTestUtils.setField(user1, "id", 1L);
+        ReflectionTestUtils.setField(user2, "id", 2L);
         user1.setCreatedAt(Instant.parse("2026-10-09T02:00:00Z"));
         user2.setCreatedAt(Instant.parse("2026-10-09T02:00:00Z"));
         List<User> users = List.of(user1, user2);
 
         when(userService.findAllUsers()).thenReturn(users);
 
-        mockMvc.perform(get("/users"))
+        mockMvc.perform(get("/users").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].name").value("Alex"))
-                .andExpect(jsonPath("$[0].email").value("alex@gmail.com"))
-                .andExpect(jsonPath("$[0].age").value(18))
-                .andExpect(jsonPath("$[0].createdAt").value("2026-10-09T02:00:00Z"))
-                .andExpect(jsonPath("$[1].name").value("Sasha"))
-                .andExpect(jsonPath("$[1].email").value("sasha@gmail.com"))
-                .andExpect(jsonPath("$[1].age").value(23));
+                .andExpect(jsonPath("$._embedded.userResponseList.length()").value(2))
+                .andExpect(jsonPath("$._embedded.userResponseList[0].name").value("Alex"))
+                .andExpect(jsonPath("$._embedded.userResponseList[0].email").value("alex@gmail.com"))
+                .andExpect(jsonPath("$._embedded.userResponseList[0].age").value(18))
+                .andExpect(jsonPath("$._embedded.userResponseList[0].createdAt").value("2026-10-09T02:00:00Z"))
+                .andExpect(jsonPath("$._embedded.userResponseList[1].name").value("Sasha"))
+                .andExpect(jsonPath("$._embedded.userResponseList[1].age").value(23))
+                .andExpect(jsonPath("$._embedded.userResponseList[1].email").value("sasha@gmail.com"))
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/users"))
+                .andExpect(jsonPath("$._embedded.userResponseList[0]._links.self.href").value("http://localhost/users/1"))
+                .andExpect(jsonPath("$._embedded.userResponseList[1]._links.self.href").value("http://localhost/users/2"))
+                .andExpect(jsonPath("$._embedded.userResponseList[0]._links.users.href").value("http://localhost/users"))
+                .andExpect(jsonPath("$._embedded.userResponseList[1]._links.users.href").value("http://localhost/users"));
 
         verify(userService).findAllUsers();
     }
@@ -104,10 +116,10 @@ public class UserControllerTest {
     void shouldReturnEmptyListWhenNoUsers() throws Exception {
         when(userService.findAllUsers()).thenReturn(List.of());
 
-        mockMvc.perform(get("/users"))
+        mockMvc.perform(get("/users").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(0))
-                .andExpect(content().json("[]"));
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/users"))
+                .andExpect(jsonPath("$._embedded").doesNotExist());
 
         verify(userService).findAllUsers();
     }
@@ -129,14 +141,17 @@ public class UserControllerTest {
         String json = objectMapper.writeValueAsString(userRequest);
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
 
-        mockMvc.perform(post("/users").contentType(MediaType.APPLICATION_JSON).content(json))
+        mockMvc.perform(post("/users").accept(MediaType.APPLICATION_JSON).contentType(MediaType.APPLICATION_JSON).content(json))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", "/users/5"))
                 .andExpect(jsonPath("$.id").value(5))
                 .andExpect(jsonPath("$.name").value("Alex"))
                 .andExpect(jsonPath("$.email").value("alex@gmail.com"))
                 .andExpect(jsonPath("$.age").value(23))
-                .andExpect(jsonPath("$.createdAt").value("2026-10-09T02:00:00Z"));
+                .andExpect(jsonPath("$.createdAt").value("2026-10-09T02:00:00Z"))
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/users/5"))
+                .andExpect(jsonPath("$._links.users.href").value("http://localhost/users"));
+
 
         verify(userService).saveUser(captor.capture());
         assertEquals("Alex", captor.getValue().getName());
