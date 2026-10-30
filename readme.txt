@@ -1,3 +1,84 @@
+## Microservices patterns
+
+В системе используются пять самостоятельных Spring Boot приложений:
+
+| Приложение          | Порт | Назначение                              |
+|---------------------|------|-----------------------------------------|
+| user-service        | 8080 | REST API пользователей и PostgreSQL     |
+| notification-service| 8081 | Обработка событий Kafka и отправка писем |
+| discovery-server    | 8761 | Реестр сервисов Eureka                  |
+| api-gateway         | 8082 | Общая точка входа к HTTP API             |
+| config-server       | 8888 | Централизованная выдача настроек         |
+
+Исходный проект user-service находится в папке UserBD.
+Порты соответствуют текущим настройкам и могут быть изменены.
+
+## Внешняя конфигурация
+
+Настройки приложений хранятся в отдельной папке config-repo.
+Она находится вне src/main/resources приложений.
+
+## Порядок запуска
+
+1. Запустить PostgreSQL, Kafka и Mailpit.
+2. Запустить config-server.
+3. Запустить discovery-server.
+4. Запустить user-service и notification-service.
+5. Дождаться регистрации обоих сервисов в Eureka со статусом UP.
+6. Запустить api-gateway и дождаться обновления его реестра сервисов.
+
+Eureka доступна по адресу:
+
+http://localhost:8761
+
+Mailpit доступен по адресу:
+
+http://localhost:8025
+
+При создании контейнера Mailpit используется переменная:
+
+MP_SMTP_DISABLE_RDNS=true
+
+Она отключает обратный DNS-поиск, который в текущем локальном
+окружении вызывал задержку SMTP-приветствия примерно на 10 секунд.
+
+## API Gateway и Service Discovery
+
+Основной адрес для HTTP-запросов клиента:
+
+http://localhost:8082
+
+Адреса localhost:8080 и localhost:8081 используются для прямой
+диагностики сервисов. Такие запросы обходят Gateway и его
+Circuit Breaker.
+
+Обмен событиями между user-service и notification-service
+происходит через Kafka и не проходит через Gateway.
+
+## Circuit Breaker
+
+В Gateway настроены два независимых Circuit Breaker:
+
+userCircuitBreaker — для API пользователей.
+notificationCircuitBreaker — для API уведомлений.
+
+При ошибке обращения к сервису, превышении тайм-аута или открытом
+Circuit Breaker Gateway вызывает соответствующий fallback:
+
+/fallback/users
+/fallback/notifications
+
+Fallback возвращает HTTP 503 и JSON с сообщением о временной
+недоступности сервиса.
+
+События доступны по адресу:
+
+http://localhost:8082/actuator/circuitbreakerevents
+
+Сведения о Circuit Breaker доступны по адресу:
+
+http://localhost:8082/actuator/circuitbreakers
+
 ## Технологии
 
 - Java 17, Maven, Spring Boot 3.5.16.
